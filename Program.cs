@@ -1,14 +1,4 @@
-class Program
-{
-    private static void Main(string[] args)
-    {
-        // string input = Console.ReadLine() ?? "";
-        string input = "+-+2+2*-3*-+-1/2";
+﻿var tokens = Lexer.ParseTokens(" -+  9  *+-+--   8,8+2.5*cusf cusf 1,12");
+Console.WriteLine(string.Join(" | ", tokens));
 
-        IElement[] result = Lexer.Scan(input);
-
-        Console.WriteLine("| " + string.Join(" | ", result) + " |");
-
-        Parser.GetAST(result);
-    }
-}
+Parser.GetAT(tokens);

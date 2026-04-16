@@ -1,126 +1,91 @@
+using Calculator.Tokens;
+using Calculator.Tokens.Operators;
+
 static class Parser
 {
-    public static void GetAST(IElement[] elements)
+    struct ParsedOperator(Operator main, Operator? sign = null)
     {
-        System.Console.WriteLine("\nFormating:");
+        public Operator Main { get; set; } = main;
+        public Operator? Sign { get; set; } = sign;
 
-        List<List<(Operator op, int index)>> selected = [];
-        List<(IElement op, int index)> formated = [];
-
-        for (int i = 0; i < elements.Length; i++)
+        public override string ToString()
         {
-            IElement? item = elements[i];
+            return Main.ToString() + " " + (Sign?.ToString() ?? "NULL");
+        }
+    }
 
-            if (item is Operator op)
+    public static void GetAT(IEnumerable<IToken> tokens)
+    {
+        var groups = new List<List<Operator>>();
+
+        foreach (IToken token in tokens)
+        {
+            if (token is Operator op)
             {
-                if (!selected.Any())
-                    selected.Add([]);
+                if (groups.Count == 0)
+                {
+                    groups.Add([]);
+                }
 
-                selected.Last().Add((op, i));
+                groups[^1].Add(op);
             }
-            else if (item is Number number)
+            else if (groups.Count == 0 || groups[^1].Count > 0)
             {
-                formated.Add((number, i));
-                selected.Add([]);
+                groups.Add([]);
             }
         }
 
-        selected.RemoveAt(selected.Count - 1);
+        groups.RemoveAt(groups.Count - 1);
 
+        var formated = new ParsedOperator[groups.Count];
 
-        foreach (var item in selected)
+        for (int i = 0; i < groups.Count; i++)
         {
-            if (item.Count == 1)
+            var group = groups[i];
+
+            if (group.Count == 1)
             {
-                formated.Add(item[0]);
-                Console.WriteLine($"It`s normal format! [{item[0].op}]");
+                if (i == 0 && !(group[0] is Plus or Minus))
+                {
+                    throw new InvalidOperationException("Syntax Error: first element can be <Minus> or <Plus> or <Any Function> or <Any Number> only");
+                }
+
+                formated[i] = new(group[0]);
                 continue;
             }
 
-            bool isHadNotSimpleOperator = false;
-            bool lastIsSimpleOperator = false;
-            int countMinus = 0;
-
-            Operator? resultOperator = null;
-
-            for (int i = 0; i < item.Count; i++)
+            int nonPlusMinusCount = group.Count(x => !(x is Plus or Minus));
+            if (nonPlusMinusCount > 1)
             {
-                if (item[i].op.Character == "-")
-                {
-                    lastIsSimpleOperator = true;
-                    countMinus++;
-                }
-                else if (item[i].op.Character == "+")
-                {
-                    lastIsSimpleOperator = true;
-                }
-                else
-                {
-                    resultOperator = item[i].op;
-
-                    if (lastIsSimpleOperator || isHadNotSimpleOperator)
-                    {
-                        throw new Exception("Syntax Error");
-                    }
-
-                    isHadNotSimpleOperator = true;
-                }
+                throw new Exception("Syntax Error: only <Plus> and <Minus> can be more 1 in one group");
             }
 
-            if (resultOperator == null)
+            int minusCount = group.Count(x => x is Minus);
+            var mainOperator = group.FirstOrDefault(x => !(x is Plus or Minus));
+
+            if (mainOperator == null)
             {
-                if (countMinus % 2 == 0)
-                    resultOperator = new Operator("+");
-                else
-                    resultOperator = new Operator("-");
-            }
-            else if (countMinus % 2 != 0)
-            {
-                resultOperator.IsNegative = true;
-            }
-
-            formated.Add((resultOperator, item[0].index));
-
-            Console.WriteLine("Formated: " + resultOperator);
-        }
-
-        var result = formated.OrderBy(a => a.index).Select(x => x.op).ToList();
-
-        if (result.First() is Operator @operator)
-        {
-            if (@operator.Character == "-")
-            {
-                result.RemoveAt(0);
-
-                if (result.First() is not Number number)
-                    throw new Exception("Syntax Error");
-
-                result[0] = new Number(-number.Value);
+                formated[i] = new(GetOperatorByMinusCount(minusCount));
             }
             else
             {
-                if (@operator.Character == "+")
-                    result.RemoveAt(0);
-                else
-                    throw new Exception("Syntax Error");
+                formated[i] = new(mainOperator);
+                
+                if (minusCount != 0)
+                    formated[i].Sign = GetOperatorByMinusCount(minusCount);
             }
         }
 
-        if (result.Last() is Operator)
+        Console.WriteLine("Formated");
+        
+        for (int i = 0; i < formated.Length; i++)
         {
-            throw new Exception("Syntax Error!");
+            Console.WriteLine("\t" + formated[i]);
         }
+    }
 
-        foreach (var item in result)
-        {
-            Console.Write(item + " ");
-        }
-
-        Console.WriteLine();
-
-        for (int i = 0; i < result.Count; i++)
-        {
-            
-        }
+    private static Operator GetOperatorByMinusCount(int minusCount)
+    {
+        return (minusCount % 2 == 0) ? Operator.GetOperator<Plus>() : new Minus();
     }
 }

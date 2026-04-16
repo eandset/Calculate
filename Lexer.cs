@@ -1,145 +1,102 @@
-﻿internal class Lexer
+using System.Text.RegularExpressions;
+using Calculator.Tokens;
+
+partial class Lexer
 {
-    static readonly string[] operations = Operator.GetOperators();
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex DublicateSpace();
 
-    public static IElement[] Scan(string expression)
+    public static IEnumerable<IToken> ParseTokens(string expression)
     {
-        expression = expression.Replace(" ", "");
+        expression = FormatExpression(expression);
+        string cleanExpression = GetCleanExpression(expression);
 
-        List<string> strElements = [];
+        return GetTokens(cleanExpression);
+    }
 
-        foreach (char element in expression)
+    private static string FormatExpression(string expression)
+    {
+        expression = expression.Replace(".", ",");
+        expression = expression.ToLower();
+        expression = DublicateSpace().Replace(expression, " ");
+
+        return expression;
+    }
+
+    private static string GetCleanExpression(string expression)
+    {
+        string result = "";
+
+        foreach (char c in expression)
         {
-            string strElement = element.ToString();
-
-            if (IsOperator(strElement))
+            if (Collector.AllTokenNames.Contains(c.ToString()))
             {
-                strElements.Add(strElement);
-            }
-            else if (IsValidPartOfNumber(strElement))
-            {
-                if (strElements.Count == 0 || IsOperator(strElements.Last()))
-                {
-                    strElements.Add(strElement);
-                }
-                else
-                {
-                    strElements[^1] = strElements.Last() + element;
-                }
+                result += " " + c + " ";
             }
             else
             {
-                throw new Exception("Invalid character");
+                result += c;
             }
         }
 
-        var elements = Format(strElements).ToArray();
-
-        return elements;
+        return result;
     }
 
-    private static IEnumerable<IElement> Format(List<string> elements)
+    private static IEnumerable<IToken> GetTokens(string cleanExpression)
     {
-        for (int i = 0; i < elements.Count; i++)
+        var tokensStr = GetTokensStr(cleanExpression);
+
+        return BuildTokens(tokensStr);
+    }
+
+    private static IEnumerable<string> GetTokensStr(string result)
+    {
+        return result
+            .Split(" ")
+            .Where(IsValidString);
+    }
+
+    private static bool IsValidString(string str)
+    {
+        return !string.IsNullOrWhiteSpace(str);
+    }
+
+    private static IEnumerable<IToken> BuildTokens(IEnumerable<string> tokensStrArray)
+    {
+        return tokensStrArray.Select(GetCurrentToken);
+    }
+
+    private static IToken GetCurrentToken(string item)
+    {
+        if (float.TryParse(item, out float number))
         {
-            elements[i] = elements[i].Replace(".", ",");
-
-            string? item = elements[i];
-
-            if (!IsValidElement(item, out var number))
-                throw new Exception("Invalid element: " + item);
-
-            if (number.HasValue)
-                yield return new Number(number.Value);
-            else
-                yield return new Operator(item);
+            return new Number(number);
         }
-    }
-
-    private static bool IsValidPartOfNumber(string element)
-    {
-        return element == "," || element == "." || int.TryParse(element, out _);
-    }
-
-    private static bool IsValidElement(string element, out float? number)
-    {
-        number = null;
-
-        return IsOperator(element) || TryParseNumber(element, out number);
-    }
-
-    private static bool TryParseNumber(string element, out float? number)
-    {
-        bool status = float.TryParse(element, out var result);
-
-        number = status ? result : null;
-
-        return status;
-    }
-
-    private static bool IsOperator(string element)
-    {
-        return operations.Contains(element);
-    }
-}
-
-interface IElement
-{
-    string ToString();
-}
-
-class Number(float element) : IElement
-{
-    public override string ToString()
-    {
-        return Value.ToString();
-    }
-
-    public readonly float Value = element;
-}
-
-class Operator : IElement
-{
-    private static readonly Dictionary<string, (Func<float, float, float> action, byte importantLevel)> rules = new()
-    {
-        {"+", ((x, y) => x + y, 1)},
-        {"-", ((x, y) => x - y, 1)},
-        {"*", ((x, y) => x * y, 2)},
-        {"/", ((x, y) => x / y, 2)},
-    };
-
-    public static string[] GetOperators() => rules.Select(x => x.Key).ToArray();
-
-    public readonly byte ImportantLevel;
-    public string Character;
-    
-    private readonly Func<float, float, float> Action;
-
-    public Operator(string element)
-    {
-        if (rules.TryGetValue(element, out var value))
+        if (Collector.FunctionNames.Contains(item))
         {
-            ImportantLevel = value.importantLevel;
-            Action = value.action;
-            Character = element;
+            return Collector.Functions.First(x => x.Name == item);
         }
-        else
+        if (Collector.OperatorNames.Contains(item))
         {
-            throw new Exception("Unknow operator: " + element);
+            return Collector.Operators.First(x => x.Symbol.ToString() == item);
         }
+
+        throw GetException(item);
     }
 
-    public override string ToString()
+    private static Exception GetException(string item)
     {
-        return $"<{Character}{(IsNegative ? "-" : "")}>";
+        const string HELP_MESSAGE_ERROR = "Syntax Error: {0}\nAre you mean '{1} <oparation>'? It is need SPACE after function.";
+        const string UNKNOWN_FUNCTION_MESSAGE_ERROR = "Syntax Error - UNKNOW token: {0}";
+
+        foreach (var name in Collector.FunctionNames)
+        {
+            if (item.Contains(name))
+            {
+                return new Exception(string.Format(HELP_MESSAGE_ERROR, item, name));
+            }
+        }
+
+        return new Exception(string.Format(UNKNOWN_FUNCTION_MESSAGE_ERROR, item));
     }
-
-    public float Calculate(float left, float right)
-    {
-        int multiplier = IsNegative ? -1 : 1;
-
-        return Action(left, right * multiplier);
-    }
-
-    public bool IsNegative { get; set; } = false;
 }
